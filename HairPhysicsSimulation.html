@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>HairPhysicsSimulation</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				font-family: Monospace;
+				background-color: #000;
+				color: #fff;
+				margin: 0px;
+				overflow: hidden;
+			}
+			#info {
+				color: #fff;
+				position: absolute;
+				top: 10px;
+				width: 100%;
+				text-align: center;
+				z-index: 100;
+				display:block;
+			}
+			#info a, .button { color: #f00; font-weight: bold; text-decoration: underline; cursor: pointer }
+		</style>
+	</head>
+
+	<body>
+		<div id="info">
+		<a href="http://threejs.org" target="_blank">three.js</a> - OBJMTLLoader test
+		</div>
+
+		<script src="../build/three.min.js"></script>
+		<script src="js/OrbitControls.js"></script>
+		<script src="js/loaders/DDSLoader.js"></script>
+		<script src="js/loaders/MTLLoader.js"></script>
+		<script src="js/loaders/OBJMTLLoader.js"></script>
+
+		<script src="js/Detector.js"></script>
+		<script src="js/libs/stats.min.js"></script>
+		<script src="js/modifiers/TessellateModifier.js"></script>
+		<script src="js/Hair.js"></script>
+
+		<script>
+
+			var container;
+
+			var geoms = [];
+			var stats = new Stats();
+			var scalars = [];
+			var lines = [];
+			var particles = [];
+			var particleslines = [];
+			var counter = 0;
+			var arr = new THREE.Geometry;
+			var norms = [];
+			// lineT = [];
+			
+			var scalp = new THREE.Object3D;
+			var camera, scene, renderer;
+			var mouseX = 0, mouseY = 0;
+
+			var windowHalfX = window.innerWidth / 2;
+			var windowHalfY = window.innerHeight / 2;
+
+
+			
+
+
+			init();
+			animate();
+
+
+			function init() {
+
+
+
+
+				
+
+
+				container = document.createElement( 'div' );
+
+
+						// align top-left
+
+				stats.setMode(1);
+				stats.domElement.style.position = 'absolute';
+				stats.domElement.style.left = '0px';
+				stats.domElement.style.top = '0px';
+				container.appendChild( stats.domElement );
+				document.body.appendChild( container );
+
+
+
+
+				document.body.appendChild( stats.domElement );
+
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 1, 2000 );
+				camera.position.z = 100;
+
+				// scene
+				scene = new THREE.Scene();
+				scene.fog = new THREE.Fog( 0xcce0ff, 500, 10000 );
+
+
+				/*var ambient = new THREE.AmbientLight( 0x444444 );
+				scene.add( ambient );
+
+				var directionalLight = new THREE.DirectionalLight( 0xEEEEEE );
+				directionalLight.position.set( 0, 0, 1 ).normalize();
+				scene.add( directionalLight );*/
+
+
+				// lights
+
+				var light, materials;
+
+				scene.add( new THREE.AmbientLight( 0x666666 ) );
+
+				light = new THREE.DirectionalLight( 0xdfebff, 1.75 );
+				light.position.set( 50, 200, 100 );
+				light.position.multiplyScalar( 5.3 );
+
+				light.castShadow = true;
+				//light.shadowCameraVisible = true;
+
+				light.shadowMapWidth = 1024;
+				light.shadowMapHeight = 1024;
+
+				var d = 300;
+
+				light.shadowCameraLeft = -d;
+				light.shadowCameraRight = d;
+				light.shadowCameraTop = d;
+				light.shadowCameraBottom = -d;
+
+				light.shadowCameraFar = 1000;
+				light.shadowDarkness = 0.5;
+
+				scene.add( light );
+
+				// model
+
+				var onProgress = function ( xhr ) {
+					if ( xhr.lengthComputable ) {
+						var percentComplete = xhr.loaded / xhr.total * 100;
+						console.log( Math.round(percentComplete, 2) + '% downloaded' );
+					}
+				};
+
+				var onError = function ( xhr ) {
+				};
+
+
+				//THREE.Loader.Handlers.add( /\.dds$/i, new THREE.DDSLoader() );]
+
+
+				/*var loader = new THREE.OBJMTLLoader();
+				loader.load( 'obj/sphere1.obj', 'obj/sphere2.mtl', function ( object ) {
+
+					sphere1 = object;
+					sphere1.position.y = 100;
+					console.log(sphere1.position);
+					sphere1.traverse(function(child){
+						if(child instanceof THREE.Mesh)
+						{
+							child.geometry.vertices[0]
+
+						}
+					});
+
+
+				}*/
+
+
+				//, onProgress, onError );
+
+				var loader = new THREE.OBJMTLLoader();
+				loader.load( 'obj/scalp.obj', 'obj/scalp.mtl', function ( object ) {
+
+					scalp = object;
+					var cnt = 0;
+					scalp.traverse(function (child){
+						if(child instanceof THREE.Mesh)
+						{	
+							
+							
+
+						
+							
+							child.geometry.computeFaceNormals();
+							child.geometry.computeVertexNormals(true);
+
+							child.material.side = THREE.DoubleSide;
+							//geo.fromGeometry(child.geometry);
+
+							scalp.position.y = 100;
+							if (cnt == 1){
+							
+							arr = child.geometry;
+						}
+							cnt++;
+							
+						}
+
+
+					});
+					
+
+					//console.log(arr);
+					scene.add(scalp);
+
+
+
+
+
+					// Unfortunately we lose all vertex information (its passed to a buffer) after the end of this load call until the render call. initiate all the hair geometry here and then update its position for each frame.
+
+					// It turns out we have another large problem. In particular there are 2 objects that we must keep track of, mesh Triangles, which are simply the arr.faces array, and the normals of every vertex. Sadly, there is no one to one correspondence built into the Three.js geometry class between a vertex and its normal. All the normals are located within the faces itself. This is because normals are primarily calculated for lighting calculations. So we must improvise.
+
+					// 1) Build the one to one correspondence class then build control hairs
+
+					// 2) cycle through geometry and simply not build repeated lines.
+
+					// In anycase sense the normals are a constant it would be best to store them in a file and read them instead of calculating them. 
+
+					// The good news is that the vertices required for each face normal more or less increase linearly. That is the first face includes vertice indices 0,1,2, the 2nd is 3,2,1 and so. Knowning this we can simply loop through the vertices and build an ordered array of normals.
+
+					//for(i=0,norms = [],,len = arr.faces.length;i<len;i++)
+					
+					
+					// for every faces
+
+						for(i=0;i<arr.faces.length;i++)
+						{
+							norms[arr.faces[i].a] = arr.faces[i].vertexNormals[0];
+							norms[arr.faces[i].b] = arr.faces[i].vertexNormals[1];
+							norms[arr.faces[i].c] = arr.faces[i].vertexNormals[2];
+								
+						
+						
+						}
+
+
+						//console.log(norms);
+
+
+					
+
+					//var f_id = 4;
+
+					for(v_id = 0,face_len = norms.length;v_id<face_len;v_id++)	
+
+					//for(v_id = 0,face_len = 1;v_id<face_len;v_id++)						
+					{
+						
+
+							var l_geom = new THREE.Geometry();
+							for(i=0,scalars = [1,4,6,8,12];i<scalars.length;i++){
+							//for(i=0,scalars = [1,2],il=scalars.length;i<il;i++){
+								//console.log(i);
+
+								var vec1 = new THREE.Vector3();
+								vec1.addVectors(scalp.position,arr.vertices[v_id]);
+								if (i > 0){
+
+									
+									
+
+									var norm = new THREE.Vector3();
+									norm.copy(norms[v_id]);
+									//console.log(norm);
+									norm.multiplyScalar(scalars[i-1]);
+									vec1.add(norm);
+
+
+
+
+									
+									
+								}
+							//console.log(vec1);
+
+							l_geom.vertices.push(vec1);
+
+							
+							
+							}
+
+						/*for(k=0;k<l_geom.vertices.length;k++){
+							particles[v_id].push(new Particle(l_geom.vertices[k],MASS))	
+						}
+
+						particlesLine.push(particles);*/
+						var tessMod = new THREE.TessellateModifier( 8 );
+
+						for (var i = 0; i<6; i++){
+							tessMod.modify(l_geom);
+						}
+							
+
+						
+						
+
+						//console.log(l_geom);
+
+
+						var l_material = new THREE.LineBasicMaterial({
+								color: 0x580818,
+								linewidth: 10
+							});
+
+							geoms.push(l_geom)
+
+							line = new THREE.Line(l_geom,l_material)
+							lines.push(line);
+							scene.add(line);
+								
+					}	
+				}
+
+
+				, onProgress, onError );
+
+
+
+
+				// Build particle system (guide hairs) from head normals
+
+				/*for (i=0,len=arr.faces;i<len;i++)
+				{
+
+				}*/
+
+				// For now lets build one face worth of hair
+				// 3 Control Hairs, Built in the normal direction of vertexNormals
+
+				//var ParticleCount = 20;
+				//var particles = new THREE.Geometry();
+
+
+
+
+				
+
+				// To accomplish this we will take vertex in the vertexNormals array and set a particle a set normal distance away from it, easily accomplished by adding a the normal vector to the particle position.
+				
+
+				/*var newpos = new THREE.Vector3();
+				newpos.addVectors(arr.faces[0].vertexNormals,scalp.position);
+				console.log(newpos);*/
+
+
+				// Constraint Spheres
+				//	var sphere1Mat = new THREE.MeshBasicMaterial( { color: 0x000000, shading: THREE.FlatShading, wireframe: true} )
+
+
+				// Custom material for hair
+
+
+
+
+				/*var hairMaterial = new THREE.ShaderMaterial({
+						uniforms:{
+							uniform float3 objLightDir
+
+						},
+						attributes:{
+
+						},
+
+						vertexShader: document.getElementById('vertexShader').textContent,
+						fragmentShader: document.getElementById('fragmentShader'.textContet)
+				});*/
+
+				
+
+				
+					// ground
+
+				var groundTexture = THREE.ImageUtils.loadTexture( "textures/terrain/grasslight-big.jpg" );
+				groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+				groundTexture.repeat.set( 25, 25 );
+				groundTexture.anisotropy = 16;
+				
+				var groundMaterial = new THREE.MeshPhongMaterial( { color: 0xffffff, specular: 0x111111, map: groundTexture } );
+
+				var mesh = new THREE.Mesh( new THREE.PlaneBufferGeometry( 20000, 20000 ), groundMaterial );
+				mesh.position.y = -0;
+				mesh.rotation.x = - Math.PI / 2;
+				mesh.receiveShadow = true;
+				scene.add( mesh );
+
+				var sphere1 = new THREE.Mesh(new THREE.Sphere(new THREE.Vector3(0,0,0),15.5),groundMaterial);
+				sphere1.receiveShadow = true;
+				sphere1.position.y = 100;
+
+				scene.add(sphere1);
+
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.setClearColor( scene.fog.color );
+				container.appendChild( renderer.domElement );
+
+				document.addEventListener( 'mousemove', onDocumentMouseMove, false );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function calcTangents(pt1,pt2,pt3,newPts){
+				// Takes 3 vertices, pt1, pt2, pt3. Each of which correspond to their vertex in order. then by taking the vector pt3 and pt1 and taking difference the tangent vector is calculated. By centering that vector in both directions by some scalar amount (say 0.5) 
+
+
+				var diffV = new THREE.Vector3();
+				diffV.subVectors(pt3,pt1);
+				diffV.normalize();
+
+				var newPt1 = new THREE.Vector3();
+				var newPt2 = new THREE.Vector3();
+				// draw two lines centered around pt2.
+
+				diffV.multiplyScalar(1);
+				newPt1.addVectors(diffV,pt2);
+				newPts.push(newPt1);
+				newPt2.addVectors(diffV.multiplyScalar(-1),pt2);
+				newPts.push(newPt2);
+				}
+
+			function onWindowResize() {
+
+				windowHalfX = window.innerWidth / 2;
+				windowHalfY = window.innerHeight / 2;
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function onDocumentMouseMove( event ) {
+
+				mouseX = ( event.clientX - windowHalfX ) / 2;
+				mouseY = ( event.clientY - windowHalfY ) / 2;
+				//vec1 = new THREE.Vector3(0.20,3);
+				//scalp.position.z += -1;
+				//console.log(scalp);
+				//scalp.posiition.add(vec1);
+				
+			}
+
+			// The new function needs to be subjugated to 
+			//function 
+
+			function animate() {
+
+				// It takes a little bit of time for the models to download and goemetery to be created so we need to wait until we try to animate hairs.
+
+				//console.log(lines.length);
+				if (lines.length > 0)
+				{
+
+
+
+
+					
+
+									//console.log(lines);
+
+					// The goal is the find the cubic bezier curve between two main control points. the main control points are the points that are found using the 
+
+	
+
+					//console.log(lines[0].geometry.vertices);
+					var time = Date.now();
+					// animate hair
+					for(j=0;j<lines.length;j++){
+					//lines[i].geometry.vertices[6].multiplyScalar(1.0001);
+		
+					simulate(time,j);
+
+					
+					//lines[i].geometry.normalsNeedUpdate = true;
+						for( var i=0,il = particles.length;i<il;i++){
+					//console.log(lines[j].geometry.vertices[i]);
+					//console.log(particles[i].position);
+
+
+					//var curve = new THREE.CubicBezierCurve3();
+					//for 
+
+
+
+
+					lines[j].geometry.vertices[i].copy(particles[i].position);
+						}
+
+
+
+					// After control points are updated, we need to build new geometry to smooth the hair lines
+
+
+					var newPts = [];
+					//console.log(particles.length);
+					for( var i=0,il = particles.length;i<il;i++){
+
+						
+
+
+
+						
+
+
+						// for the first point there is no "first point", so the tangent is simply the same of the point in world coordinates.
+						if(i == 0){
+
+							tmpVec = new THREE.Vector3();
+							tmpVec2 = new THREE.Vector3();
+							tmpVec.subVectors(particles[i+1].position,particles[i].position);
+							tmpVec2.addVectors(particles[i].position,tmpVec.multiplyScalar(0.2));
+							newPts.push(tmpVec2);
+						}
+						else if(i==(il-1)){
+							tmpVec = new THREE.Vector3();
+							tmpVec2 = new THREE.Vector3();
+							tmpVec.subVectors(particles[i-1].position,particles[i].position);
+							tmpVec2.addVectors(particles[i].position,tmpVec.multiplyScalar(0.2));
+							newPts.push()
+
+						}
+
+						else{
+						//console.log(i);
+
+						calcTangents(particles[i-1].position,particles[i].position,particles[i+1].position,newPts);
+
+
+						}
+
+
+
+
+
+
+
+
+						//var l_material = new THREE.LineBasicMaterial({
+							//	color: 0x0000ff
+						//	});
+
+							//line = new THREE.Line(l_geom,l_material)
+							//lines.push(line);
+							//scene.add(line);
+
+					}
+
+
+					lines[j].geometry.tangentsNeedUpdate = true; 
+
+					lines[j].geometry.verticesNeedUpdate = true;
+
+					}	
+
+
+					
+
+				}
+
+				stats.update();
+				//lines[0].geometry.vertices.push(new THREE.Vector3(0,0,0));
+
+				requestAnimationFrame( animate );
+				//arr.verticesNeedUpdate = true;
+				//console.log(line.geometry.vertices)
+				//console.log(arr);
+				render();
+				//console.log(arr);
+
+
+
+
+
+
+			}
+
+			function render() {
+
+
+
+				camera.position.x += ( mouseX - camera.position.x ) * .05;
+				camera.position.y += ( - mouseY - camera.position.y ) * .05;
+
+				camera.lookAt( scalp.position );
+				//renderer.setFaceCulling(true)
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+
+	</body>
+</html>
